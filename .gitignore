@@ -1,2 +1,9 @@
 .zig-cache/
 zig-out/
+*.o
+*.out
+*.a
+*.so
+*.dylib
+contest-materials/icfp-2006/cmu-src
+contest-materials/other
