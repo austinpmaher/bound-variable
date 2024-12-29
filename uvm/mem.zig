@@ -5,7 +5,6 @@ const DataRow = struct { slice: []u32, addr: [*]u32 };
 pub const MemList: type = struct {
     allocator: std.mem.Allocator,
     list: std.MultiArrayList(DataRow),
-    zero: [*]u32,
 
     //
     // allocate a new empty row into the MemList
@@ -58,7 +57,6 @@ pub fn init(allocator: std.mem.Allocator) !*MemList {
     ml.* = .{
         .allocator = allocator,
         .list = std.MultiArrayList(DataRow){},
-        .zero = undefined,
     };
 
     try ml.list.ensureTotalCapacity(allocator, 10);
@@ -73,8 +71,6 @@ pub fn initWithSlice(allocator: std.mem.Allocator, slice: []u32) !*MemList {
         .slice = slice,
         .addr = slice.ptr,
     });
-
-    ml.zero = slice.ptr;
 
     return ml;
 }
