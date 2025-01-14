@@ -2,14 +2,14 @@ const std = @import("std");
 
 const DataRow = struct { slice: []u32, addr: [*]u32 };
 
-pub const MemList: type = struct {
+pub const MemoryList: type = struct {
     allocator: std.mem.Allocator,
     list: std.MultiArrayList(DataRow),
 
     //
     // allocate a new empty row into the MemList
     //
-    pub fn allocateRow(ml: *MemList, len: u32) ![]u32 {
+    pub fn allocateRow(ml: *MemoryList, len: u32) ![]u32 {
         const slice = try ml.allocator.alloc(u32, len);
         try ml.list.append(ml.allocator, DataRow{
             .slice = slice,
@@ -22,7 +22,7 @@ pub const MemList: type = struct {
     // copy the given array into the MemList
     // return a slice pointing to the new copy of the array
     //
-    pub fn addRow(ml: *MemList, values: []const u32) ![]u32 {
+    pub fn addRow(ml: *MemoryList, values: []const u32) ![]u32 {
         const slice = try ml.allocator.alloc(u32, values.len);
         @memcpy(slice, values);
         try ml.list.append(ml.allocator, DataRow{
@@ -36,7 +36,7 @@ pub const MemList: type = struct {
     // delete and free one row (an array of data) from the MemList
     // given a pointer to the array
     //
-    pub fn freeRow(ml: *MemList, ptr: [*]u32) void {
+    pub fn freeRow(ml: *MemoryList, ptr: [*]u32) void {
         for (ml.list.items(.slice), 0..) |slice, i| {
             if (slice.ptr == ptr) {
                 ml.list.swapRemove(i);
@@ -45,15 +45,15 @@ pub const MemList: type = struct {
         }
     }
 
-    pub fn print(ml: *MemList) void {
+    pub fn print(ml: *MemoryList) void {
         for (ml.list.items(.slice), 0..) |slice, i| {
             std.debug.print("Row {}: {*} (addr: {*})\n", .{ i, slice, slice.ptr });
         }
     }
 };
 
-pub fn init(allocator: std.mem.Allocator) !*MemList {
-    const ml = try allocator.create(MemList);
+pub fn init(allocator: std.mem.Allocator) !*MemoryList {
+    const ml = try allocator.create(MemoryList);
     ml.* = .{
         .allocator = allocator,
         .list = std.MultiArrayList(DataRow){},
@@ -64,7 +64,7 @@ pub fn init(allocator: std.mem.Allocator) !*MemList {
     return ml;
 }
 
-pub fn initWithSlice(allocator: std.mem.Allocator, slice: []u32) !*MemList {
+pub fn initWithSlice(allocator: std.mem.Allocator, slice: []u32) !*MemoryList {
     const ml = try init(allocator);
 
     try ml.list.append(allocator, DataRow{
@@ -75,7 +75,7 @@ pub fn initWithSlice(allocator: std.mem.Allocator, slice: []u32) !*MemList {
     return ml;
 }
 
-pub fn deinit(ml: *MemList) void {
+pub fn deinit(ml: *MemoryList) void {
     for (ml.list.items(.slice)) |slice| {
         ml.allocator.free(slice);
     }
