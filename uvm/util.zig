@@ -29,10 +29,10 @@ pub fn readFileToMem(allocator: std.mem.Allocator, filename: []const u8) ![]u32 
     if (file_size % 4 != 0) {
         return error.InvalidFileSize;
     }
-    
+
     // First allocate a u8 buffer
     const u8_buffer = try allocator.alloc(u8, file_size);
-    defer allocator.free(u8_buffer);  // Free the temporary buffer
+    defer allocator.free(u8_buffer); // Free the temporary buffer
 
     // Allocate the final u32 buffer
     const u32_buffer = try allocator.alloc(u32, file_size / 4);
@@ -45,12 +45,19 @@ pub fn readFileToMem(allocator: std.mem.Allocator, filename: []const u8) ![]u32 
     }
 
     // Convert the bytes to u32s (assuming big-endian)
-    for (0..file_size/4) |i| {
+    for (0..file_size / 4) |i| {
         u32_buffer[i] = @as(u32, u8_buffer[i * 4]) << 24 |
-                       @as(u32, u8_buffer[i * 4 + 1]) << 16 |
-                       @as(u32, u8_buffer[i * 4 + 2]) << 8 |
-                       @as(u32, u8_buffer[i * 4 + 3]);
+            @as(u32, u8_buffer[i * 4 + 1]) << 16 |
+            @as(u32, u8_buffer[i * 4 + 2]) << 8 |
+            @as(u32, u8_buffer[i * 4 + 3]);
     }
 
     return u32_buffer;
+}
+
+pub fn getBooleanEnvVar(allocator: std.mem.Allocator, var_name: []const u8) !bool {
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+    const value = env_map.get(var_name) orelse return false;
+    return std.mem.eql(u8, value, "true");
 }

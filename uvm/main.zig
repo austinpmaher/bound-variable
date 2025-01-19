@@ -2,7 +2,6 @@ const std = @import("std");
 const fs = std.fs;
 const util = @import("util.zig");
 const vm = @import("vm.zig");
-const debug = true;
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
@@ -33,7 +32,9 @@ pub fn main() !void {
     defer allocator.free(file_contents);
     try stdout.print("File '{s}' read.\n", .{args[1]});
 
-    const uvm = try vm.initVM(allocator, file_contents);
+    const debug = try util.getBooleanEnvVar(allocator, "UVM_DEBUG");
+
+    const uvm = try vm.initVM(allocator, file_contents, debug);
     defer vm.freeVM(uvm);
     try vm.runVM(uvm);
 }
