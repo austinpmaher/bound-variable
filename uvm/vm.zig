@@ -4,6 +4,23 @@ const util = @import("util.zig");
 const mem = @import("mem.zig");
 const ArrayList = std.ArrayList;
 
+const State = struct {
+    x: u32,
+    opcode: Opcode,
+    a: u3,
+    b: u3,
+    c: u3,
+
+    pub fn init(self: *State, instruction: u32) void {
+        self.x = instruction;
+        const raw_opcode: u4 = @truncate(instruction >> 28);
+        self.opcode = @enumFromInt(raw_opcode);
+        self.a = @truncate((instruction >> 6) & 0x0007);
+        self.b = @truncate((instruction >> 3) & 0x0007);
+        self.c = @truncate(instruction & 0x0007);
+    }
+};
+
 const Opcode = enum(u4) {
     ConditionalMove,
     ArrayIndex,
@@ -21,16 +38,69 @@ const Opcode = enum(u4) {
     LoadConstant,
 
     pub fn disassemble(buf: []u8, instruction: u32) ![]const u8 {
-        const raw_opcode: u4 = @truncate(instruction >> 28);
-        const opcode: Opcode = @enumFromInt(raw_opcode);
-        const a: u3 = @truncate((instruction >> 6) & 0x0007);
-        const b: u3 = @truncate((instruction >> 3) & 0x0007);
-        const c: u3 = @truncate(instruction & 0x0007);
+        var state: State = undefined;
+        state.init(instruction);
 
-        const fmt = "I: 0x{x:0>2} Op: {any}, A: {d}, B: {d}, C: {d}";
-        const slice = try std.fmt.bufPrint(buf, fmt, .{ instruction, opcode, a, b, c });
-
-        return slice;
+        switch (state.opcode) {
+            .ConditionalMove => {
+                const fmt = "{x}: if (R{x}) R{x} = R{x};";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.c, state.a, state.b });
+            },
+            .ArrayIndex => {
+                const fmt = "{x}: R{x} = R{x}[R{x}];";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
+            },
+            .ArrayAmendment => {
+                const fmt = "{x}: R{x}[R{x}] = R{x};";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
+            },
+            .Addition => {
+                const fmt = "{x}: R{x} = R{x} + R{x};";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
+            },
+            .Multiplication => {
+                const fmt = "{x}: R{x} = R{x} * R{x};";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
+            },
+            .Division => {
+                const fmt = "{x}: R{x} = R{x} / R{x};";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
+            },
+            .NotAnd => {
+                const fmt = "{x}: R{x} = ~(R{x} & R{x});";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
+            },
+            .Halt => {
+                const fmt = "{x}: halt;";
+                return std.fmt.bufPrint(buf, fmt, .{state.x});
+            },
+            .Allocate => {
+                const fmt = "{x}: R{x} = (uint)alloc(size=R{x});";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.b, state.c });
+            },
+            .Abandon => {
+                const fmt = "{x}: free(R{x});";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.c });
+            },
+            .Output => {
+                const fmt = "{x}: putchar(R{x});";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.c });
+            },
+            .Input => {
+                const fmt = "{x}: R{x} = getchar();";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.c });
+            },
+            .LoadProgram => {
+                const fmt = "{x}: load(src = R{x}, ip =R{x});";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, state.b, state.c });
+            },
+            .LoadConstant => {
+                const register = 7 & (state.x >> 25);
+                const value = state.x & 0o177777777;
+                const fmt = "{x}: R{x} = {x};";
+                return std.fmt.bufPrint(buf, fmt, .{ state.x, register, value });
+            },
+        }
     }
 };
 
@@ -66,12 +136,17 @@ pub fn initVM(allocator: std.mem.Allocator, input_data: []u32, debug: bool) !*VM
 fn allocate_memory(uvm: *VM, size: u32) !u32 {
     const slot = uvm.memory.items.len;
     const block = try uvm.allocator.alloc(u32, size);
+    @memset(block, 0);
     try uvm.memory.append(block);
     if (uvm.debug) std.debug.print("Allocated {d} bytes in slot {d}\n", .{ size, slot });
     return @intCast(slot);
 }
 
 pub fn fetch_memory_ptr(uvm: *VM, idx: u32) ![*]u32 {
+    if (idx >= uvm.memory.items.len) {
+        std.debug.print("Invalid memory index requested. requested: {x}, len: {x}\n", .{ idx, uvm.memory.items.len });
+        return error.InvalidMemoryAccess;
+    }
     return uvm.memory.items[idx].ptr;
 }
 
@@ -88,7 +163,11 @@ pub fn runVM(uvm: *VM) !void {
         const c: u3 = @truncate(instruction & 0x0007);
 
         if (uvm.debug) {
-            std.debug.print("Registers: {any}. ", .{uvm.reg});
+            std.debug.print("IP: {d:0>3}, R:", .{(uvm.ip - 1)});
+            for (uvm.reg) |reg| {
+                std.debug.print("{x:0>8}|", .{reg});
+            }
+            std.debug.print("\n", .{});
             const result = try Opcode.disassemble(&buffer, instruction);
             std.debug.print("{s}\n", .{result});
         }
@@ -108,16 +187,16 @@ pub fn runVM(uvm: *VM) !void {
                 ptr[uvm.reg[b]] = uvm.reg[c];
             },
             .Addition => {
-                uvm.reg[a] = uvm.reg[b] + uvm.reg[c];
+                uvm.reg[a] = uvm.reg[b] +% uvm.reg[c];
             },
             .Multiplication => {
-                uvm.reg[a] = uvm.reg[b] * uvm.reg[c];
+                uvm.reg[a] = uvm.reg[b] *% uvm.reg[c];
             },
             .Division => {
                 uvm.reg[a] = uvm.reg[b] / uvm.reg[c];
             },
             .NotAnd => {
-                uvm.reg[a] = ~uvm.reg[b] & uvm.reg[c];
+                uvm.reg[a] = ~(uvm.reg[b] & uvm.reg[c]);
             },
             .Halt => {
                 return;
@@ -152,8 +231,8 @@ pub fn runVM(uvm: *VM) !void {
                     const originalZero = uvm.memory.items[0];
                     uvm.memory.items[0] = newSlice;
                     uvm.allocator.free(originalZero);
-                    uvm.ip = uvm.reg[c];
                 }
+                uvm.ip = uvm.reg[c];
             },
             .LoadConstant => {
                 uvm.reg[7 & (instruction >> 25)] = instruction & 0o177777777;
