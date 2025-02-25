@@ -55,11 +55,11 @@ const Opcode = enum(u4) {
                 return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
             },
             .Addition => {
-                const fmt = "{x}: R{x} = R{x} + R{x};";
+                const fmt = "{x}: R{x} = R{x} +% R{x};";
                 return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
             },
             .Multiplication => {
-                const fmt = "{x}: R{x} = R{x} * R{x};";
+                const fmt = "{x}: R{x} = R{x} *% R{x};";
                 return std.fmt.bufPrint(buf, fmt, .{ state.x, state.a, state.b, state.c });
             },
             .Division => {
@@ -128,6 +128,9 @@ pub fn initVM(allocator: std.mem.Allocator, input_data: []u32, debug: bool) !*VM
         .debug = debug,
     };
 
+    if (uvm.debug) {
+        std.debug.print("Initializing VM with 0x{x} bytes of memeory\n", .{input_data.len});
+    }
     try uvm.memory.append(input_data);
 
     return uvm;
@@ -138,7 +141,9 @@ fn allocate_memory(uvm: *VM, size: u32) !u32 {
     const block = try uvm.allocator.alloc(u32, size);
     @memset(block, 0);
     try uvm.memory.append(block);
-    if (uvm.debug) std.debug.print("Allocated {d} bytes in slot {d}\n", .{ size, slot });
+    if (uvm.debug) {
+        std.debug.print("Allocated 0x{x} bytes in slot {d}\n", .{ size, slot });
+    }
     return @intCast(slot);
 }
 
@@ -215,7 +220,7 @@ pub fn runVM(uvm: *VM) !void {
             .Output => {
                 const value: u8 = @truncate(uvm.reg[c]);
                 const out = std.io.getStdOut().writer();
-                try out.print("{c}", .{value});
+                try out.writeByte(value);
             },
             .Input => {
                 const in = std.io.getStdIn().reader().readByte() catch 255;
